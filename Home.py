@@ -1,250 +1,285 @@
 import streamlit as st
-import pandas as pd
-from datetime import datetime
+import sqlite3
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+import re
 
-# Initialize session state for navigation
-if 'page' not in st.session_state:
-    st.session_state.page = 'home'
+# Initialize session state
+def init_session_state():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'username' not in st.session_state:
+        st.session_state.username = ""
+    if 'user_role' not in st.session_state:
+        st.session_state.user_role = ""
+    if 'login_attempts' not in st.session_state:
+        st.session_state.login_attempts = 0
+    if 'last_attempt' not in st.session_state:
+        st.session_state.last_attempt = None
 
-# Navigation function
-def go_to_page(page_name):
-    st.session_state.page = page_name
-    st.rerun()
-
-# Get current page from session state
-page = st.session_state.page
-
-# ---------------- HOME PAGE ----------------
-if page == "home":
-    st.set_page_config(page_title="Standup App", page_icon="👋")
-    st.title("👋 Welcome to Standup App")
-    st.markdown("### Choose your role:")
+# Database functions
+def init_database():
+    """Initialize SQLite database with users table"""
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
     
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.markdown("#### 🧑‍💻 Developer")
-        st.markdown("Submit your daily standup updates")
-        if st.button("Enter as Developer", key="dev_btn", use_container_width=True):
-            go_to_page("developer")
-    
-    with col2:
-        st.markdown("#### 👨‍💼 Tech Lead")
-        st.markdown("View team progress and updates")
-        if st.button("Enter as Tech Lead", key="lead_btn", use_container_width=True):
-            go_to_page("techlead")
-
-# ---------------- DEVELOPER PAGE ----------------
-elif page == "developer":
-    st.set_page_config(page_title="Developer Standup", page_icon="🧑‍💻")
-    
-    # Back button in sidebar
-    with st.sidebar:
-        if st.button("⬅️ Back to Home", key="back_dev"):
-            go_to_page("home")
-    
-    st.title("🧑‍💻 Developer Standup")
-    st.markdown("---")
-    
-    # Developer standup form
-    with st.form("standup_form"):
-        st.subheader("📝 Daily Standup Form")
-        
-        # Basic info
-        col1, col2 = st.columns(2)
-        with col1:
-            developer_name = st.text_input("👤 Your Name", placeholder="Enter your name")
-        with col2:
-            date_today = st.date_input("📅 Date", value=datetime.now().date())
-        
-        # Standup questions
-        st.markdown("#### What did you work on yesterday?")
-        yesterday_work = st.text_area(
-            "Yesterday's Tasks",
-            placeholder="Describe what you accomplished yesterday...",
-            height=100
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP
         )
-        
-        st.markdown("#### What will you work on today?")
-        today_plan = st.text_area(
-            "Today's Plan",
-            placeholder="What are you planning to work on today?",
-            height=100
-        )
-        
-        st.markdown("#### Any blockers or challenges?")
-        blockers = st.text_area(
-            "Blockers/Challenges",
-            placeholder="Any issues that are preventing you from moving forward?",
-            height=80
-        )
-        
-        # Additional fields
-        col3, col4 = st.columns(2)
-        with col3:
-            mood = st.select_slider(
-                "😊 How are you feeling?",
-                options=["😫 Stressed", "😐 Okay", "😊 Good", "🚀 Excellent"],
-                value="😊 Good"
-            )
-        with col4:
-            priority = st.selectbox(
-                "🎯 Today's Priority Level",
-                ["Low", "Medium", "High", "Critical"]
-            )
-        
-        # Submit button
-        submitted = st.form_submit_button("📤 Submit Standup", use_container_width=True)
-        
-        if submitted:
-            if developer_name and yesterday_work and today_plan:
-                st.success("✅ Standup submitted successfully!")
-                st.balloons()
-                
-                # Display confirmation
-                with st.expander("📋 Your Submission Summary"):
-                    st.write(f"**Name:** {developer_name}")
-                    st.write(f"**Date:** {date_today}")
-                    st.write(f"**Yesterday:** {yesterday_work}")
-                    st.write(f"**Today:** {today_plan}")
-                    st.write(f"**Blockers:** {blockers if blockers else 'None'}")
-                    st.write(f"**Mood:** {mood}")
-                    st.write(f"**Priority:** {priority}")
-            else:
-                st.error("❌ Please fill in at least Name, Yesterday's work, and Today's plan")
-
-# ---------------- TECHLEAD PAGE ----------------
-elif page == "techlead":
-    st.set_page_config(page_title="Tech Lead Dashboard", page_icon="👨‍💼")
+    ''')
     
-    # Back button in sidebar
-    with st.sidebar:
-        if st.button("⬅️ Back to Home", key="back_lead"):
-            go_to_page("home")
-        
-        st.markdown("---")
-        st.markdown("### 🔧 Dashboard Controls")
-        
-        # Filter options
-        date_filter = st.date_input("📅 Filter by Date", value=datetime.now().date())
-        
-        team_filter = st.multiselect(
-            "👥 Filter by Team Members",
-            ["Alice Johnson", "Bob Smith", "Carol Davis", "David Wilson"],
-            default=["Alice Johnson", "Bob Smith", "Carol Davis", "David Wilson"]
-        )
-    
-    st.title("👨‍💼 Tech Lead Dashboard")
-    st.markdown("---")
-    
-    # Sample data (in real app, this would come from database)
-    sample_standups = [
-        {
-            "name": "Alice Johnson",
-            "date": "2025-06-04",
-            "yesterday": "Completed user authentication module, fixed 3 bugs in login system",
-            "today": "Start working on password reset functionality",
-            "blockers": "Need API documentation for third-party service",
-            "mood": "😊 Good",
-            "priority": "High"
-        },
-        {
-            "name": "Bob Smith", 
-            "date": "2025-06-04",
-            "yesterday": "Implemented database migration scripts, updated user model",
-            "today": "Work on data validation and error handling",
-            "blockers": "None",
-            "mood": "🚀 Excellent",
-            "priority": "Medium"
-        },
-        {
-            "name": "Carol Davis",
-            "date": "2025-06-04", 
-            "yesterday": "Designed new UI components, created wireframes",
-            "today": "Implement responsive design for mobile devices",
-            "blockers": "Waiting for design approval from client",
-            "mood": "😐 Okay",
-            "priority": "High"
-        }
+    # Create default admin user if not exists
+    default_users = [
+        ('admin', 'admin123', 'admin'),
+        ('user', 'user123', 'user'),
+        ('demo', 'demo123', 'user')
     ]
     
-    # Team overview metrics
-    st.subheader("📊 Team Overview")
-    col1, col2, col3, col4 = st.columns(4)
+    for username, password, role in default_users:
+        cursor.execute('SELECT username FROM users WHERE username = ?', (username,))
+        if not cursor.fetchone():
+            salt = secrets.token_hex(16)
+            password_hash = hash_password_with_salt(password, salt)
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, salt, role)
+                VALUES (?, ?, ?, ?)
+            ''', (username, password_hash, salt, role))
     
-    with col1:
-        st.metric("👥 Team Members", len(sample_standups))
-    with col2:
-        blocked_count = sum(1 for s in sample_standups if s['blockers'] != "None")
-        st.metric("🚫 Blocked Tasks", blocked_count)
-    with col3:
-        high_priority = sum(1 for s in sample_standups if s['priority'] == "High")
-        st.metric("🔴 High Priority", high_priority)
-    with col4:
-        excellent_mood = sum(1 for s in sample_standups if "🚀" in s['mood'])
-        st.metric("🚀 Excellent Mood", excellent_mood)
-    
-    st.markdown("---")
-    
-    # Display standups
-    st.subheader("📋 Today's Standups")
-    
-    for standup in sample_standups:
-        if standup['name'] in team_filter:
-            with st.expander(f"👤 {standup['name']} - {standup['mood']}", expanded=True):
-                col_left, col_right = st.columns([2, 1])
-                
-                with col_left:
-                    st.markdown(f"**📅 Date:** {standup['date']}")
-                    st.markdown(f"**✅ Yesterday:** {standup['yesterday']}")
-                    st.markdown(f"**🎯 Today:** {standup['today']}")
-                    
-                    if standup['blockers'] != "None":
-                        st.markdown(f"**🚫 Blockers:** :red[{standup['blockers']}]")
-                    else:
-                        st.markdown(f"**🚫 Blockers:** :green[None]")
-                
-                with col_right:
-                    st.markdown(f"**😊 Mood:** {standup['mood']}")
-                    st.markdown(f"**🎯 Priority:** {standup['priority']}")
-                    
-                    # Action buttons
-                    if standup['blockers'] != "None":
-                        if st.button(f"🆘 Help {standup['name'].split()[0]}", key=f"help_{standup['name']}"):
-                            st.info(f"Reaching out to help {standup['name']} with their blockers...")
-    
-    # Summary section
-    st.markdown("---")
-    st.subheader("📈 Team Summary")
-    
-    # Create summary charts/stats
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**🎯 Priority Distribution:**")
-        priority_counts = {}
-        for standup in sample_standups:
-            priority = standup['priority']
-            priority_counts[priority] = priority_counts.get(priority, 0) + 1
-        
-        for priority, count in priority_counts.items():
-            st.write(f"- {priority}: {count}")
-    
-    with col2:
-        st.markdown("**😊 Team Mood:**")
-        mood_counts = {}
-        for standup in sample_standups:
-            mood = standup['mood']
-            mood_counts[mood] = mood_counts.get(mood, 0) + 1
-        
-        for mood, count in mood_counts.items():
-            st.write(f"- {mood}: {count}")
+    conn.commit()
+    conn.close()
 
-# Footer
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: gray;'>"
-    "Standup App v1.0 | Built with Streamlit 💙"
-    "</div>", 
-    unsafe_allow_html=True
-)
+def hash_password_with_salt(password, salt):
+    """Hash password with salt"""
+    return hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex()
+
+def verify_user(username, password):
+    """Verify user credentials"""
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT password_hash, salt, role FROM users WHERE username = ?', (username,))
+    result = cursor.fetchone()
+    
+    if result:
+        stored_hash, salt, role = result
+        if stored_hash == hash_password_with_salt(password, salt):
+            # Update last login
+            cursor.execute('UPDATE users SET last_login = ? WHERE username = ?', 
+                         (datetime.now(), username))
+            conn.commit()
+            conn.close()
+            return True, role
+    
+    conn.close()
+    return False, None
+
+def is_valid_password(password):
+    """Validate password strength"""
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long"
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain at least one uppercase letter"
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter"
+    if not re.search(r"\d", password):
+        return False, "Password must contain at least one digit"
+    return True, "Password is valid"
+
+def register_user(username, password, role='user'):
+    """Register new user"""
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    try:
+        salt = secrets.token_hex(16)
+        password_hash = hash_password_with_salt(password, salt)
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, salt, role)
+            VALUES (?, ?, ?, ?)
+        ''', (username, password_hash, salt, role))
+        conn.commit()
+        conn.close()
+        return True, "User registered successfully"
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, "Username already exists"
+
+def check_rate_limit():
+    """Check if user has exceeded login attempts"""
+    if st.session_state.login_attempts >= 3:
+        if st.session_state.last_attempt:
+            time_diff = datetime.now() - st.session_state.last_attempt
+            if time_diff < timedelta(minutes=5):
+                return False, f"Too many failed attempts. Try again in {5 - time_diff.seconds//60} minutes."
+        else:
+            st.session_state.login_attempts = 0
+    return True, ""
+
+def login_page():
+    """Display login form"""
+    st.title("🔐 Secure Login System")
+    
+    # Check rate limiting
+    can_attempt, rate_limit_msg = check_rate_limit()
+    
+    if not can_attempt:
+        st.error(rate_limit_msg)
+        return
+    
+    tab1, tab2 = st.tabs(["Login", "Register"])
+    
+    with tab1:
+        st.subheader("Login to your account")
+        
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            remember_me = st.checkbox("Remember me")
+            
+            submit_button = st.form_submit_button("Login")
+            
+            if submit_button:
+                if username and password:
+                    is_valid, role = verify_user(username, password)
+                    if is_valid:
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.session_state.user_role = role
+                        st.session_state.login_attempts = 0
+                        st.success("Login successful!")
+                        st.rerun()
+                    else:
+                        st.session_state.login_attempts += 1
+                        st.session_state.last_attempt = datetime.now()
+                        st.error(f"Invalid credentials. Attempt {st.session_state.login_attempts}/3")
+                else:
+                    st.error("Please enter both username and password")
+    
+    with tab2:
+        st.subheader("Create new account")
+        
+        with st.form("register_form"):
+            new_username = st.text_input("Choose Username")
+            new_password = st.text_input("Choose Password", type="password")
+            confirm_password = st.text_input("Confirm Password", type="password")
+            
+            register_button = st.form_submit_button("Register")
+            
+            if register_button:
+                if new_username and new_password and confirm_password:
+                    if new_password != confirm_password:
+                        st.error("Passwords do not match")
+                    else:
+                        is_valid, msg = is_valid_password(new_password)
+                        if not is_valid:
+                            st.error(msg)
+                        else:
+                            success, msg = register_user(new_username, new_password)
+                            if success:
+                                st.success(msg)
+                            else:
+                                st.error(msg)
+                else:
+                    st.error("Please fill in all fields")
+    
+    # Demo credentials info
+    with st.expander("Demo Credentials"):
+        st.write("**Available demo accounts:**")
+        st.write("- Username: `admin`, Password: `admin123` (Admin)")
+        st.write("- Username: `user`, Password: `user123` (User)")
+        st.write("- Username: `demo`, Password: `demo123` (User)")
+
+def admin_panel():
+    """Admin-only panel"""
+    st.header("👑 Admin Panel")
+    
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    # User management
+    st.subheader("User Management")
+    cursor.execute('SELECT username, role, created_at, last_login FROM users')
+    users = cursor.fetchall()
+    
+    if users:
+        import pandas as pd
+        df = pd.DataFrame(users, columns=['Username', 'Role', 'Created', 'Last Login'])
+        st.dataframe(df)
+    
+    conn.close()
+
+def user_dashboard():
+    """Regular user dashboard"""
+    st.header("📊 User Dashboard")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Profile Views", "1,234", "12%")
+    
+    with col2:
+        st.metric("Posts", "56", "3%")
+    
+    with col3:
+        st.metric("Followers", "789", "8%")
+    
+    st.subheader("Recent Activity")
+    import pandas as pd
+    import numpy as np
+    
+    # Sample data
+    activity_data = pd.DataFrame({
+        'Date': pd.date_range('2024-01-01', periods=10),
+        'Activity': np.random.randint(1, 100, 10)
+    })
+    
+    st.line_chart(activity_data.set_index('Date'))
+
+def main_app():
+    """Main application after login"""
+    st.title(f"Welcome, {st.session_state.username}! 👋")
+    
+    # Sidebar
+    with st.sidebar:
+        st.write(f"**User:** {st.session_state.username}")
+        st.write(f"**Role:** {st.session_state.user_role}")
+        
+        if st.button("🚪 Logout"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+    
+    # Role-based content
+    if st.session_state.user_role == 'admin':
+        admin_panel()
+    
+    user_dashboard()
+
+def main():
+    """Main application"""
+    st.set_page_config(
+        page_title="Secure App",
+        page_icon="🔐",
+        layout="wide"
+    )
+    
+    # Initialize
+    init_session_state()
+    init_database()
+    
+    # Route based on login status
+    if not st.session_state.logged_in:
+        login_page()
+    else:
+        main_app()
+
+if __name__ == "__main__":
+    main()
