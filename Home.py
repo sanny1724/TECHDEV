@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import re
 import json
 import os
+import hashlib
 # pyright: ignore[reportMissingImports
 
 # Supabase config
@@ -14,6 +15,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # File paths for team management data
 USERS_FILE = "users_roles.json"
 TEAMS_FILE = "teams.json"
+TECH_LEADS_FILE = "tech_leads.json"
 
 # Initialize session state
 def init_session_state():
@@ -29,6 +31,8 @@ def init_session_state():
         st.session_state.user_role = ""
     if 'current_page' not in st.session_state:
         st.session_state.current_page = "dashboard"
+    if 'tech_lead_verified' not in st.session_state:
+        st.session_state.tech_lead_verified = False
 
 # Team management helper functions
 def load_data(filename):
@@ -44,6 +48,20 @@ def save_data(data, filename):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
 
+def hash_token(token):
+    """Hash the personal access token for security"""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def verify_personal_access_token(token):
+    """Verify if the token meets security requirements"""
+    if len(token) < 20:
+        return False, "Token must be at least 20 characters long"
+    if not re.search(r"[A-Za-z]", token):
+        return False, "Token must contain letters"
+    if not re.search(r"[0-9]", token):
+        return False, "Token must contain numbers"
+    return True, "Valid token"
+
 def get_user_role():
     users = load_data(USERS_FILE)
     return users.get(st.session_state.username, {}).get('role', '')
@@ -53,8 +71,60 @@ def set_user_role(role):
     if st.session_state.username not in users:
         users[st.session_state.username] = {}
     users[st.session_state.username]['role'] = role
+    users[st.session_state.username]['registered_at'] = datetime.now().isoformat()
     save_data(users, USERS_FILE)
     st.session_state.user_role = role
+
+def register_tech_lead(token):
+    """Register tech lead with personal access token"""
+    tech_leads = load_data(TECH_LEADS_FILE)
+    tech_leads[st.session_state.username] = {
+        'token_hash': hash_token(token),
+        'registered_at': datetime.now().isoformat(),
+        'status': 'active'
+    }
+    save_data(tech_leads, TECH_LEADS_FILE)
+    st.session_state.tech_lead_verified = True
+
+def is_tech_lead_verified():
+    """Check if current user is a verified tech lead"""
+    tech_leads = load_data(TECH_LEADS_FILE)
+    return st.session_state.username in tech_leads
+
+def get_all_teams():
+    """Get all teams created by developer interns"""
+    teams = load_data(TEAMS_FILE)
+    users = load_data(USERS_FILE)
+    
+    all_teams = []
+    for team_key, team_data in teams.items():
+        leader = team_data.get('leader', '')
+        if leader in users and users[leader].get('role') == 'Developer Intern':
+            team_info = {
+                'team_id': team_key,
+                'leader': leader,
+                'members': team_data.get('members', []),
+                'created_at': team_data.get('created_at', ''),
+                'member_count': len(team_data.get('members', []))
+            }
+            all_teams.append(team_info)
+    
+    return all_teams
+
+def get_platform_stats():
+    """Get overall platform statistics"""
+    users = load_data(USERS_FILE)
+    teams = load_data(TEAMS_FILE)
+    tech_leads = load_data(TECH_LEADS_FILE)
+    
+    stats = {
+        'total_users': len(users),
+        'tech_leads': len(tech_leads),
+        'developer_interns': len([u for u in users.values() if u.get('role') == 'Developer Intern']),
+        'total_teams': len(teams),
+        'total_team_members': sum(len(team.get('members', [])) for team in teams.values())
+    }
+    return stats
 
 # Original authentication functions
 def is_valid_password(password):
@@ -120,6 +190,7 @@ def login_page():
                         st.session_state.username = msg
                         st.session_state.login_attempts = 0
                         st.session_state.user_role = get_user_role()
+                        st.session_state.tech_lead_verified = is_tech_lead_verified()
                         st.success("✅ Login successful!")
                         st.rerun()
                     else:
@@ -153,32 +224,73 @@ def login_page():
                         else:
                             st.error(f"Registration failed: {msg}")
 
+def tech_lead_registration():
+    """Tech Lead registration with personal access token"""
+    st.subheader("🔐 Tech Lead Registration")
+    st.info("As a Tech Lead, you need to provide a Personal Access Token for enhanced security.")
+    
+    with st.form("tech_lead_form"):
+        st.write("**Security Requirements:**")
+        st.write("• Token must be at least 20 characters")
+        st.write("• Must contain both letters and numbers")
+        st.write("• Keep your token secure - it will be encrypted")
+        
+        token = st.text_input("Personal Access Token", type="password", 
+                             placeholder="Enter your GitLab/GitHub Personal Access Token")
+        
+        confirm_token = st.text_input("Confirm Token", type="password",
+                                     placeholder="Re-enter your token")
+        
+        agree = st.checkbox("I understand that this token will be used for team management and security purposes")
+        
+        submit = st.form_submit_button("Register as Tech Lead")
+        
+        if submit:
+            if not agree:
+                st.error("Please agree to the terms to proceed.")
+            elif token != confirm_token:
+                st.error("Tokens do not match.")
+            else:
+                valid, msg = verify_personal_access_token(token)
+                if valid:
+                    register_tech_lead(token)
+                    set_user_role('Tech Lead')
+                    st.success("✅ Successfully registered as Tech Lead!")
+                    st.success("🔒 Your token has been securely encrypted and stored.")
+                    st.rerun()
+                else:
+                    st.error(f"Invalid token: {msg}")
+
 def user_dashboard():
     st.header("📊 User Dashboard")
     st.success(f"Welcome, {st.session_state.username}")
     
     # Display current role if set
     if st.session_state.user_role:
-        st.info(f"Current Role: {st.session_state.user_role}")
+        role_emoji = "👨‍💼" if st.session_state.user_role == "Tech Lead" else "👨‍💻"
+        st.info(f"{role_emoji} Current Role: {st.session_state.user_role}")
+        
+        if st.session_state.user_role == "Tech Lead" and st.session_state.tech_lead_verified:
+            st.success("🔒 Verified Tech Lead Account")
     
-    # Role registration section
-    st.subheader("🎯 Choose Your Role")
+    # Role registration section (only if no role assigned)
+    if not st.session_state.user_role:
+        st.subheader("🎯 Choose Your Role")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("👨‍💼 Register as Tech Lead", use_container_width=True):
+                st.session_state.current_page = "tech_lead_registration"
+                st.rerun()
+        
+        with col2:
+            if st.button("👨‍💻 Register as Developer Intern", use_container_width=True):
+                set_user_role('Developer Intern')
+                st.success("✅ Registered as Developer Intern!")
+                st.rerun()
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("👨‍💼 Register as Tech Lead", use_container_width=True):
-            set_user_role('Tech Lead')
-            st.success("✅ Registered as Tech Lead!")
-            st.rerun()
-    
-    with col2:
-        if st.button("👨‍💻 Register as Developer Intern", use_container_width=True):
-            set_user_role('Developer Intern')
-            st.success("✅ Registered as Developer Intern!")
-            st.rerun()
-    
-    # Show team management option for Developer Interns
+    # Role-specific options
     if st.session_state.user_role == 'Developer Intern':
         st.divider()
         st.subheader("👥 Team Management")
@@ -186,11 +298,27 @@ def user_dashboard():
             st.session_state.current_page = "team_management"
             st.rerun()
     
+    elif st.session_state.user_role == 'Tech Lead' and st.session_state.tech_lead_verified:
+        st.divider()
+        st.subheader("🎛️ Tech Lead Controls")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔍 View All Teams", use_container_width=True):
+                st.session_state.current_page = "manage_all_teams"
+                st.rerun()
+        
+        with col2:
+            if st.button("📊 Platform Analytics", use_container_width=True):
+                st.session_state.current_page = "platform_analytics"
+                st.rerun()
+    
     # Original dashboard content
-    st.divider()
-    st.subheader("📈 Your Activity")
-    st.metric("Activity Score", "89%", "5%")
-    st.line_chart({"Progress": [10, 25, 35, 70, 90]})
+    if st.session_state.user_role:
+        st.divider()
+        st.subheader("📈 Your Activity")
+        st.metric("Activity Score", "89%", "5%")
+        st.line_chart({"Progress": [10, 25, 35, 70, 90]})
 
 def team_management_page():
     st.title("👥 Team Management")
@@ -272,21 +400,151 @@ def team_management_page():
     with col3:
         created_date = datetime.fromisoformat(current_team['created_at']).strftime("%Y-%m-%d")
         st.metric("Created", created_date)
+
+def manage_all_teams_page():
+    st.title("🎛️ Tech Lead - Team Management")
+    st.subheader("All Developer Intern Teams")
     
-    # Navigation
+    all_teams = get_all_teams()
+    
+    if not all_teams:
+        st.info("No teams have been created yet by Developer Interns.")
+        return
+    
+    # Search and filter options
+    search_term = st.text_input("🔍 Search teams by leader name", placeholder="Type leader name...")
+    
+    # Filter teams based on search
+    filtered_teams = all_teams
+    if search_term:
+        filtered_teams = [team for team in all_teams if search_term.lower() in team['leader'].lower()]
+    
+    # Display teams
+    for i, team in enumerate(filtered_teams, 1):
+        with st.expander(f"Team {i}: {team['leader']} ({team['member_count']} members)", expanded=False):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Team Leader:** {team['leader']}")
+                st.write(f"**Created:** {datetime.fromisoformat(team['created_at']).strftime('%Y-%m-%d %H:%M')}")
+                st.write(f"**Team Members:** {team['member_count']}/5")
+                
+                if team['members']:
+                    st.write("**Members:**")
+                    for j, member in enumerate(team['members'], 1):
+                        st.write(f"  {j}. {member['name']} (@{member['gitlab_username']})")
+                else:
+                    st.write("*No members added yet*")
+            
+            with col2:
+                # Team actions
+                if st.button(f"📧 Contact Leader", key=f"contact_{i}"):
+                    st.info(f"Contact: {team['leader']}")
+                
+                if st.button(f"📊 Team Details", key=f"details_{i}"):
+                    st.json(team)
+                
+                # Emergency controls
+                if st.button(f"⚠️ Freeze Team", key=f"freeze_{i}"):
+                    st.warning("Team freeze functionality - implement as needed")
+    
+    # Summary statistics
     st.divider()
-    if st.button("🏠 Back to Dashboard"):
-        st.session_state.current_page = "dashboard"
-        st.rerun()
+    st.subheader("📈 Teams Summary")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Teams", len(all_teams))
+    with col2:
+        active_teams = len([t for t in all_teams if t['member_count'] > 0])
+        st.metric("Active Teams", active_teams)
+    with col3:
+        avg_size = sum(t['member_count'] for t in all_teams) / len(all_teams) if all_teams else 0
+        st.metric("Avg Team Size", f"{avg_size:.1f}")
+    with col4:
+        full_teams = len([t for t in all_teams if t['member_count'] == 5])
+        st.metric("Full Teams", full_teams)
+
+def platform_analytics_page():
+    st.title("📊 Platform Analytics")
+    st.subheader("Tech Lead Dashboard")
+    
+    stats = get_platform_stats()
+    
+    # Main metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Users", stats['total_users'])
+    with col2:
+        st.metric("Tech Leads", stats['tech_leads'])
+    with col3:
+        st.metric("Developer Interns", stats['developer_interns'])
+    with col4:
+        st.metric("Total Teams", stats['total_teams'])
+    
+    st.divider()
+    
+    # Detailed analytics
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📈 User Distribution")
+        user_data = {
+            'Role': ['Tech Lead', 'Developer Intern', 'Unassigned'],
+            'Count': [stats['tech_leads'], stats['developer_interns'], 
+                     stats['total_users'] - stats['tech_leads'] - stats['developer_interns']]
+        }
+        st.bar_chart(data=user_data, x='Role', y='Count')
+    
+    with col2:
+        st.subheader("👥 Team Statistics")
+        st.metric("Total Team Members", stats['total_team_members'])
+        st.metric("Avg Members per Team", 
+                 f"{stats['total_team_members'] / stats['total_teams']:.1f}" if stats['total_teams'] > 0 else "0")
+        
+        # Team utilization
+        if stats['total_teams'] > 0:
+            utilization = (stats['total_team_members'] / (stats['total_teams'] * 5)) * 100
+            st.metric("Team Capacity Utilization", f"{utilization:.1f}%")
+    
+    # Recent activity
+    st.divider()
+    st.subheader("🕒 Recent Activity")
+    
+    # Get recent registrations
+    users = load_data(USERS_FILE)
+    recent_users = []
+    for username, data in users.items():
+        if 'registered_at' in data:
+            recent_users.append({
+                'username': username,
+                'role': data.get('role', 'Unassigned'),
+                'registered_at': data['registered_at']
+            })
+    
+    # Sort by registration date
+    recent_users.sort(key=lambda x: x['registered_at'], reverse=True)
+    
+    if recent_users:
+        st.write("**Recent Registrations:**")
+        for user in recent_users[:5]:  # Show last 5
+            reg_date = datetime.fromisoformat(user['registered_at']).strftime('%Y-%m-%d %H:%M')
+            st.write(f"• {user['username']} - {user['role']} ({reg_date})")
+    else:
+        st.info("No recent activity to display.")
 
 def main_app():
-    st.title("Welcome! 👋")
+    st.title("TechDev Platform 🚀")
     
     # Sidebar with user info and navigation
     with st.sidebar:
         st.write(f"**Logged in as:** {st.session_state.username}")
         if st.session_state.user_role:
-            st.write(f"**Role:** {st.session_state.user_role}")
+            role_emoji = "👨‍💼" if st.session_state.user_role == "Tech Lead" else "👨‍💻"
+            st.write(f"**Role:** {role_emoji} {st.session_state.user_role}")
+            
+            if st.session_state.user_role == "Tech Lead" and st.session_state.tech_lead_verified:
+                st.success("🔒 Verified")
         
         st.divider()
         
@@ -296,8 +554,17 @@ def main_app():
             st.rerun()
         
         if st.session_state.user_role == 'Developer Intern':
-            if st.button("👥 Team Management"):
+            if st.button("👥 My Team"):
                 st.session_state.current_page = "team_management"
+                st.rerun()
+        
+        elif st.session_state.user_role == 'Tech Lead' and st.session_state.tech_lead_verified:
+            if st.button("🎛️ Manage All Teams"):
+                st.session_state.current_page = "manage_all_teams"
+                st.rerun()
+            
+            if st.button("📊 Analytics"):
+                st.session_state.current_page = "platform_analytics"
                 st.rerun()
         
         st.divider()
@@ -310,11 +577,17 @@ def main_app():
     # Main content based on current page
     if st.session_state.current_page == "dashboard":
         user_dashboard()
+    elif st.session_state.current_page == "tech_lead_registration":
+        tech_lead_registration()
     elif st.session_state.current_page == "team_management":
         team_management_page()
+    elif st.session_state.current_page == "manage_all_teams":
+        manage_all_teams_page()
+    elif st.session_state.current_page == "platform_analytics":
+        platform_analytics_page()
 
 def main():
-    st.set_page_config(page_title="TechDev Team Management", layout="wide")
+    st.set_page_config(page_title="TechDev Platform", layout="wide", page_icon="🚀")
     init_session_state()
 
     if not st.session_state.logged_in:
