@@ -1,0 +1,241 @@
+import streamlit as st
+import json
+import os
+from datetime import datetime
+
+# Initialize session state
+def init_session_state():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'username' not in st.session_state:
+        st.session_state.username = ""
+    if 'user_role' not in st.session_state:
+        st.session_state.user_role = ""
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "login"
+
+# File paths for data persistence
+USERS_FILE = "users.json"
+TEAMS_FILE = "teams.json"
+
+# Load data from JSON files
+def load_data(filename):
+    if os.path.exists(filename):
+        try:
+            with open(filename, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+# Save data to JSON files
+def save_data(data, filename):
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=2)
+
+# Login page
+def login_page():
+    st.title("🔐 Login Page")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+        
+        if submit:
+            users = load_data(USERS_FILE)
+            if username in users and users[username]['password'] == password:
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.session_state.user_role = users[username].get('role', '')
+                st.session_state.current_page = "home"
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid username or password")
+
+# Home page
+def home_page():
+    st.title("🏠 Home Page")
+    st.write(f"Welcome, {st.session_state.username}!")
+    
+    if st.session_state.user_role:
+        st.info(f"Current Role: {st.session_state.user_role}")
+    
+    st.subheader("Register Your Role")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("👨‍💼 Register as Tech Lead", use_container_width=True):
+            users = load_data(USERS_FILE)
+            users[st.session_state.username]['role'] = 'Tech Lead'
+            save_data(users, USERS_FILE)
+            st.session_state.user_role = 'Tech Lead'
+            st.success("Registered as Tech Lead!")
+            st.rerun()
+    
+    with col2:
+        if st.button("👨‍💻 Register as Developer Intern", use_container_width=True):
+            users = load_data(USERS_FILE)
+            users[st.session_state.username]['role'] = 'Developer Intern'
+            save_data(users, USERS_FILE)
+            st.session_state.user_role = 'Developer Intern'
+            st.success("Registered as Developer Intern!")
+            st.rerun()
+    
+    # Show team management option for Developer Interns
+    if st.session_state.user_role == 'Developer Intern':
+        st.divider()
+        if st.button("👥 Manage Team Members"):
+            st.session_state.current_page = "team_management"
+            st.rerun()
+    
+    # Navigation
+    st.divider()
+    if st.button("🚪 Logout"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.session_state.user_role = ""
+        st.session_state.current_page = "login"
+        st.rerun()
+
+# Team management page
+def team_management_page():
+    st.title("👥 Team Management")
+    st.write(f"Team Leader: {st.session_state.username}")
+    
+    # Load existing teams
+    teams = load_data(TEAMS_FILE)
+    user_team_key = f"{st.session_state.username}_team"
+    
+    if user_team_key not in teams:
+        teams[user_team_key] = {
+            'leader': st.session_state.username,
+            'members': [],
+            'created_at': datetime.now().isoformat()
+        }
+        save_data(teams, TEAMS_FILE)
+    
+    current_team = teams[user_team_key]
+    
+    # Display current team members
+    st.subheader("Current Team Members")
+    if current_team['members']:
+        for i, member in enumerate(current_team['members'], 1):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"{i}. {member['name']} (GitLab: @{member['gitlab_username']})")
+            with col2:
+                if st.button(f"Remove", key=f"remove_{i}"):
+                    current_team['members'].pop(i-1)
+                    teams[user_team_key] = current_team
+                    save_data(teams, TEAMS_FILE)
+                    st.success(f"Removed {member['name']} from team!")
+                    st.rerun()
+    else:
+        st.info("No team members added yet.")
+    
+    # Add new team member
+    st.subheader("Add Team Member")
+    
+    if len(current_team['members']) >= 5:
+        st.warning("⚠️ Maximum team size reached (5 members)")
+    else:
+        with st.form("add_member_form"):
+            st.write(f"Remaining slots: {5 - len(current_team['members'])}")
+            
+            member_name = st.text_input("Friend's Name", placeholder="Enter your friend's name")
+            gitlab_username = st.text_input("GitLab Username", placeholder="Enter GitLab username (without @)")
+            
+            submit = st.form_submit_button("Add Team Member")
+            
+            if submit:
+                if member_name and gitlab_username:
+                    # Check if GitLab username already exists in team
+                    existing_usernames = [member['gitlab_username'].lower() for member in current_team['members']]
+                    if gitlab_username.lower() in existing_usernames:
+                        st.error("This GitLab username is already in your team!")
+                    else:
+                        new_member = {
+                            'name': member_name,
+                            'gitlab_username': gitlab_username,
+                            'added_at': datetime.now().isoformat()
+                        }
+                        current_team['members'].append(new_member)
+                        teams[user_team_key] = current_team
+                        save_data(teams, TEAMS_FILE)
+                        st.success(f"Added {member_name} to your team!")
+                        st.rerun()
+                else:
+                    st.error("Please fill in both name and GitLab username.")
+    
+    # Team statistics
+    st.divider()
+    st.subheader("Team Statistics")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Team Size", len(current_team['members']))
+    with col2:
+        st.metric("Available Slots", 5 - len(current_team['members']))
+    with col3:
+        created_date = datetime.fromisoformat(current_team['created_at']).strftime("%Y-%m-%d")
+        st.metric("Created", created_date)
+    
+    # Navigation
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🏠 Back to Home"):
+            st.session_state.current_page = "home"
+            st.rerun()
+    with col2:
+        if st.button("🚪 Logout"):
+            st.session_state.logged_in = False
+            st.session_state.username = ""
+            st.session_state.user_role = ""
+            st.session_state.current_page = "login"
+            st.rerun()
+
+# Simple user registration (for demo purposes)
+def register_user_demo():
+    """Demo function to create sample users - remove in production"""
+    users = load_data(USERS_FILE)
+    if not users:  # Only create demo users if file is empty
+        demo_users = {
+            "demo_user": {"password": "password123", "role": ""},
+            "john_doe": {"password": "john123", "role": ""},
+            "jane_smith": {"password": "jane123", "role": ""}
+        }
+        save_data(demo_users, USERS_FILE)
+        return True
+    return False
+
+# Main app logic
+def main():
+    st.set_page_config(
+        page_title="Team Management App",
+        page_icon="👥",
+        layout="wide"
+    )
+    
+    init_session_state()
+    
+    # Create demo users if needed (remove in production)
+    if register_user_demo():
+        st.sidebar.success("Demo users created!")
+        st.sidebar.write("Demo login credentials:")
+        st.sidebar.write("Username: demo_user")
+        st.sidebar.write("Password: password123")
+    
+    # Route to appropriate page
+    if not st.session_state.logged_in:
+        login_page()
+    else:
+        if st.session_state.current_page == "home":
+            home_page()
+        elif st.session_state.current_page == "team_management":
+            team_management_page()
+
+if __name__ == "__main__":
+    main()
