@@ -1,0 +1,103 @@
+{
+  "user_engagement": [
+    {
+      "metric_name": "login_success",
+      "value": 1,
+      "timestamp": "2025-06-07T14:23:29.203459"
+    },
+    {
+      "metric_name": "user_registration",
+      "value": 1,
+      "timestamp": "2025-06-07T14:31:54.436884"
+    },
+    {
+      "metric_name": "login_success",
+      "value": 1,
+      "timestamp": "2025-06-07T14:32:08.049209"
+    },
+    {
+      "metric_name": "role_registration",
+      "value": 1,
+      "timestamp": "2025-06-07T14:32:25.328701"
+    }
+  ],
+  "system_performance": [
+    {
+      "metric_name": "file_load_users_roles.json",
+      "value": 0.002008676528930664,
+      "timestamp": "2025-06-07T14:23:29.207465"
+    },
+    {
+      "metric_name": "file_load_tech_leads.json",
+      "value": 0.0010864734649658203,
+      "timestamp": "2025-06-07T14:23:29.208908"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:23:29.874168"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.00805044174194336,
+      "timestamp": "2025-06-07T14:23:37.040846"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:23:44.163540"
+    },
+    {
+      "metric_name": "file_load_users_roles.json",
+      "value": 0.0005114078521728516,
+      "timestamp": "2025-06-07T14:32:08.052868"
+    },
+    {
+      "metric_name": "file_load_tech_leads.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:08.054136"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:08.610033"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:13.187695"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:21.016353"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:25.320714"
+    },
+    {
+      "metric_name": "file_load_users_roles.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:25.325661"
+    },
+    {
+      "metric_name": "file_save_users_roles.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:25.328701"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.003818035125732422,
+      "timestamp": "2025-06-07T14:32:26.007865"
+    },
+    {
+      "metric_name": "file_load_teams.json",
+      "value": 0.0,
+      "timestamp": "2025-06-07T14:32:29.288139"
+    }
+  ],
+  "team_productivity": [],
+  "platform_health": []
+}
