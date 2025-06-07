@@ -10,7 +10,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from typing import Dict, List, Any
+# Instead of:
+from supabase import create_client
 
+# Try:
+from supabase.client import create_client, Client
 # Performance Monitoring Class
 class PerformanceBenchmark:
     def __init__(self):
